@@ -1,4 +1,4 @@
-/*** Header Blocks ***
+ /*** Header Blocks ***
  *FileName: Capstone_Design_Project
  *Title: Automatic Door
  *Description: Using the PIR Motion Sensor and other various components to detect people to walk through door automatically.
@@ -11,95 +11,116 @@
 
 //libraries 
 #include <Servo.h>
+#include "SoftwareSerial.h"
+SoftwareSerial myBluetooth(3,4); //RX = pin 3, Tx = pin 4
 Servo myservo;
 
 //Define pins
 /*Potentiometer Pins*/
-int potPin = A0; //This is an Analog pin used to connect the potentiometer
+int potPin = A5; //This is an Analog pin used to connect the potentiometer
 /*PIR Motion Sensor*/
 int inputPir = 2; //The input pin for PIR sensor
 /*Slide Switch*/
 int switchPin = 12; //switch is connected to pin 12
 /*LED*/
-int ledPin = 11; //Pin for LED
+int ledRedPin = 11; //Pin for Red LED
+int ledGreenPin = 13; //Pin for Green LED
 /*States & status*/ 
-int pirState = LOW; //no Motion Detected
-int val = 0; //Reading the pin status for PIR Sensor
-int Servoval = 0; //Reading the pin status for Servo Motor
+int pirState = LOW; //initallizing the PIR sensor to be set to LOW
+int pirVal = 0; //Reading the pin status for PIR Sensor
+int servoVal = 0; //Reading the pin status for Servo Motor
 int switchState = 0; //Reading in the switch status
-char incoming_Value = 0; //Storing the incoming value
+int potVal = 0; //reading in the analog for potentiometer
+char incoming_Values; //Storing the incoming value from the bluetooth
+/*potentiometer's output value for speed*/
+int outputValue = 0; 
+/*Servo Motor Position Variable*/
+int pos = 0;
+
+/*Function be set on the bottom of loop*/
+void bluetooth_App();
+void motion_Servo();
+void switching_System();
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600); //Data communication
   myservo.attach(9); //Servo motor is attached to pin 9
-  pinMode(ledPin, OUTPUT); // LED Pin output
+  pinMode(ledRedPin, OUTPUT); // LED Pin output
+  pinMode(ledGreenPin,OUTPUT);
   pinMode(inputPir, INPUT); //declaring sensor as input
   pinMode(switchPin, INPUT); //declaring switch as input
+  myBluetooth.begin(9600);
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  val = digitalRead(inputPir); //Reading in the input value for PIR
-  Servoval = analogRead(potPin); //Reading in the value for potentiometer between 0 and 1023
+  pirVal = digitalRead(inputPir); //Reading in the input value for PIR
   switchState = digitalRead(switchPin); //Reading in the state of the switch value
-
-  switching_System();//To turn on and off the system using a switch
+  potVal = analogRead(potPin); // analog read the potentiometer's value
+  outputValue = map(potVal, 0, 1023, 0, 20); //mapping the potentiometer to a certain limit of number
   
-  if(Serial.available() > 0){
-    incoming_Value = Serial.read();// Reading the incoming dats and storing it into variable incoming_Value
-    Serial.print(incoming_Value);
-    Serial.print("\n");
-    if(incoming_Value == '1'){
-      Serial.print("LED is on");
-      digitalWrite(13, HIGH);
+  switching_System();//To turn on and off the system using a switch
+  bluetooth_App();//Using bluetooth to control the LED and Door
+}
+
+//Bluetooth to the APP
+void bluetooth_App(){
+  //bluetooth to App
+  if(myBluetooth.available()>0){ //any value that is greater than 0
+    incoming_Values = myBluetooth.read(); //we are now storing the value
+    if(incoming_Values == 'a'){ //when the app sends 'a' 
+      digitalWrite(ledRedPin, HIGH); //LED would be on
     }
-    else if(incoming_Value == '2'){
-      Serial.print("LED is off");
-      digitalWrite(13,LOW);
+    if(incoming_Values == 'b'){ //When the app sends 'b'
+      digitalWrite(ledRedPin, LOW); //LED would be off
     }
-    else if(incoming_Value == '3'){
-      Serial.print("System is now on");
-      motion_Servo();
+    if(incoming_Values == 'c'){ //When the app sends 'c'
+      motion_Servo(); //motion sensor is on
     }
-    else if(incoming_Value == '4'){
-      Serial.print("System is now off");
-      exit(0);
+    if(incoming_Values == 'd'){ //when the app sends 'd'
     }
   }
 }
 
+//turning the switch on and off
 void switching_System(){
-  if(switchState == HIGH){
-    Serial.println("System is activated");
-    motion_Servo();
+  if(switchState == HIGH){ //When the switch is HIGH
+    myservo.write(0); //starting position will always be 0
+    digitalWrite(ledGreenPin,HIGH); //Green LED is on 
+    motion_Servo(); //Starts the motion sensor on
+    
   }
   else
   {
-    Serial.println("System is deactivated");
-    motion_Servo(0);
+    myservo.write(0); //Otherwise, servo starts at position 0
+    digitalWrite(ledGreenPin,LOW); //Green LED is OFF
   }
 }
 
+//servo motor is moving by the PIR Sensor
 void motion_Servo(){
   //Data processing
-  if (val == HIGH){ //checking if the input for PIR is HIGH
-    digitalWrite(ledPin, HIGH); //If Input PIR is HIGH, LED is On
+  if (pirVal == HIGH){ //checking if the input for PIR is HIGH
+    digitalWrite(ledRedPin, HIGH); //If Input PIR is HIGH, LED is On
     if (pirState == LOW){
       Serial.println("Motion detected!");
       pirState = HIGH;
-      Servoval = map(Servoval,0,1023,0,180); //Scaling it to use it with the Servo motor from 180 to 0)
-      myservo.write(Servoval);
-    }
-    else{
-      digitalWrite(ledPin, LOW); // Turning LED OFF
-      if(pirState == HIGH){
-        delay(15);
-        Serial.println("Motion has ended");
-        pirState = LOW;
-        Servoval = map(Servoval,0,1023,180,0);
-        myservo.write(Servoval);
+      for (pos = 0; pos <= 90; pos++) {  //Goes from 0 to 90 degrees
+        myservo.write(pos);              // tell servo to go to position in variable 'pos'
+        delay(outputValue);              // uses the potentiometer to change speed in ms
       }
     }
-  }  
-}
+  }
+  
+  else{
+    digitalWrite(ledRedPin, LOW); // Turning LED OFF
+      if(pirState == HIGH){
+        pirState = LOW;
+        Serial.println("Motion has ended");
+        for (pos = 90; pos >= 0; pos--) {  // goes from 90 degrees to 0 degrees
+          myservo.write(pos);              // tell servo to go to position in variable 'pos'
+          delay(outputValue);              // uses the potentiometer to change speed in ms
+        }
+      }
+}} 
